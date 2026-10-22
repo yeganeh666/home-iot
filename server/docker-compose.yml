@@ -17,4 +17,5 @@ services:
     network_mode: host          # فقط روی لینوکس کار می‌کند (توضیح در README)
     volumes:
       - ./homeassistant:/config
+      - ../app:/config/www/lightapp:ro   # اپ PWA در آدرس /local/lightapp/
       - /etc/localtime:/etc/localtime:ro

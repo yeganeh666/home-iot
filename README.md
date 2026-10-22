@@ -42,3 +42,15 @@ docker compose up -d
 
 ## ایمنی
 وصل کردن رله به برق ۲۳۰ ولت فقط با رعایت اصول ایمنی (قطع فیوز، جعبه عایق، سیم مناسب) یا توسط برق‌کار انجام شود.
+
+## اپ PWA گوشی
+پوشه `app/` یک اپ سبک برای کنترل چراغ است که Home Assistant آن را در آدرس زیر سرو می‌کند:
+
+`http://IP-کامپیوتر:8123/local/lightapp/`
+
+1. بعد از تغییر docker-compose: `docker compose up -d --force-recreate homeassistant`
+2. در Home Assistant: پروفایل ← امنیت ← **Long-lived access tokens** ← ساخت توکن.
+3. آدرس بالا را در Chrome گوشی باز کن، ⚙ را بزن، توکن و Entity ID (پیش‌فرض `light.room_light`) را وارد کن.
+4. منو ← **Add to Home screen / Install app**.
+
+> نصب کامل PWA (با service worker) فقط روی **HTTPS** یا localhost فعال می‌شود. روی `http://` معمولی فقط میان‌بر صفحه اصلی ساخته می‌شود که برای کار روزمره کافی است. برای HTTPS و دسترسی از بیرون خانه: Tailscale یا Cloudflare Tunnel (یا Nabu Casa) مناسب است.

@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f172a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="روشنایی">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>روشنایی خانه</title>
+<style>
+  :root { --bg:#0f172a; --card:#1e293b; --fg:#f1f5f9; --muted:#94a3b8; --on:#facc15; --err:#f87171; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg); color: var(--fg);
+    font-family: system-ui, -apple-system, "Vazirmatn", Tahoma, sans-serif;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: env(safe-area-inset-top) 16px env(safe-area-inset-bottom);
+  }
+  h1 { font-size: 1.1rem; font-weight: 600; color: var(--muted); margin: 0 0 28px; }
+  #btn {
+    width: min(70vw, 260px); aspect-ratio: 1; border-radius: 50%;
+    border: 4px solid #334155; background: var(--card); color: var(--muted);
+    font-size: 1.4rem; font-weight: 700; cursor: pointer;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+    transition: all .25s ease;
+  }
+  #btn svg { width: 64px; height: 64px; }
+  #btn.on { background: var(--on); color: #422006; border-color: #fde68a; box-shadow: 0 0 60px rgba(250,204,21,.55); }
+  #btn:disabled { opacity: .5; cursor: not-allowed; }
+  #status { margin-top: 24px; min-height: 1.5em; color: var(--muted); font-size: .95rem; }
+  #status.err { color: var(--err); }
+  #gear { position: fixed; top: calc(env(safe-area-inset-top) + 12px); left: 12px; background: none; border: 0; color: var(--muted); font-size: 1.6rem; padding: 8px; }
+  dialog { background: var(--card); color: var(--fg); border: 0; border-radius: 16px; padding: 20px; width: min(92vw, 420px); }
+  dialog::backdrop { background: rgba(0,0,0,.6); }
+  label { display: block; margin: 12px 0 4px; font-size: .9rem; color: var(--muted); }
+  input { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #475569; background: var(--bg); color: var(--fg); direction: ltr; font-size: 1rem; }
+  .row { display: flex; gap: 8px; margin-top: 18px; }
+  .row button { flex: 1; padding: 12px; border-radius: 10px; border: 0; font-size: 1rem; font-weight: 600; }
+  .primary { background: var(--on); color: #422006; }
+  .ghost { background: #334155; color: var(--fg); }
+  small { color: var(--muted); display:block; margin-top:10px; line-height:1.6; }
+</style>
+</head>
+<body>
+<button id="gear" aria-label="تنظیمات">⚙</button>
+<h1 id="title">لامپ اتاق</h1>
+
+<button id="btn" disabled>
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.2 1 2V17h6v-.3c0-.8.4-1.5 1-2A7 7 0 0 0 12 2z"/>
+  </svg>
+  <span id="label">…</span>
+</button>
+<div id="status"></div>
+
+<dialog id="dlg">
+  <h2 style="margin:0 0 4px">تنظیمات</h2>
+  <label for="entity">شناسه دستگاه (Entity ID)</label>
+  <input id="entity" placeholder="light.room_light" autocapitalize="off" autocorrect="off">
+  <label for="token">توکن دسترسی طولانی‌مدت</label>
+  <input id="token" type="password" placeholder="eyJ..." autocapitalize="off" autocorrect="off">
+  <small>توکن را در Home Assistant بساز: پروفایل ← امنیت ← Long-lived access tokens. توکن فقط روی همین گوشی ذخیره می‌شود.</small>
+  <div class="row">
+    <button class="ghost" id="cancel">بستن</button>
+    <button class="primary" id="save">ذخیره</button>
+  </div>
+</dialog>
+
+<script>
+const $ = id => document.getElementById(id);
+const cfg = {
+  token:  localStorage.getItem('ha_token')  || '',
+  entity: localStorage.getItem('ha_entity') || 'light.room_light',
+};
+let state = 'unknown', busy = false, timer = null;
+
+async function api(path, body) {
+  const r = await fetch('/api/' + path, {
+    method: body ? 'POST' : 'GET',
+    headers: { 'Authorization': 'Bearer ' + cfg.token, 'Content-Type': 'application/json' },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (r.status === 401) throw new Error('auth');
+  if (!r.ok) throw new Error('http ' + r.status);
+  return r.json();
+}
+
+function render() {
+  const btn = $('btn'), st = $('status');
+  btn.classList.toggle('on', state === 'on');
+  btn.disabled = busy || !['on', 'off'].includes(state);
+  $('label').textContent = state === 'on' ? 'روشن' : state === 'off' ? 'خاموش' : '…';
+  if (state === 'unavailable') { st.textContent = 'دستگاه آفلاین است'; st.className = 'err'; }
+}
+function setStatus(msg, err) { const s = $('status'); s.textContent = msg || ''; s.className = err ? 'err' : ''; }
+
+async function refresh() {
+  if (!cfg.token) { setStatus('ابتدا از ⚙ توکن را وارد کن', true); return; }
+  try {
+    const s = await api('states/' + cfg.entity);
+    state = s.state;
+    if (s.attributes && s.attributes.friendly_name) $('title').textContent = s.attributes.friendly_name;
+    if (state !== 'unavailable') setStatus('');
+  } catch (e) {
+    state = 'unknown';
+    setStatus(e.message === 'auth' ? 'توکن نامعتبر است' : 'اتصال به Home Assistant برقرار نشد', true);
+  }
+  render();
+}
+
+async function toggle() {
+  if (busy) return;
+  busy = true;
+  const target = state === 'on' ? 'turn_off' : 'turn_on';
+  state = target === 'turn_on' ? 'on' : 'off';   // پاسخ فوری در UI
+  render();
+  try {
+    await api('services/light/' + target, { entity_id: cfg.entity });
+    if (navigator.vibrate) navigator.vibrate(30);
+  } catch (e) { setStatus('ارسال فرمان ناموفق بود', true); }
+  busy = false;
+  setTimeout(refresh, 600);
+}
+
+function startPolling() { stopPolling(); refresh(); timer = setInterval(refresh, 3000); }
+function stopPolling()  { if (timer) clearInterval(timer); timer = null; }
+document.addEventListener('visibilitychange', () => document.hidden ? stopPolling() : startPolling());
+
+$('btn').addEventListener('click', toggle);
+$('gear').addEventListener('click', () => { $('entity').value = cfg.entity; $('token').value = cfg.token; $('dlg').showModal(); });
+$('cancel').addEventListener('click', () => $('dlg').close());
+$('save').addEventListener('click', () => {
+  cfg.entity = $('entity').value.trim() || 'light.room_light';
+  cfg.token  = $('token').value.trim();
+  localStorage.setItem('ha_entity', cfg.entity);
+  localStorage.setItem('ha_token', cfg.token);
+  $('dlg').close(); refresh();
+});
+
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+render(); startPolling();
+if (!cfg.token) $('gear').click();
+</script>
+</body>
+</html>
